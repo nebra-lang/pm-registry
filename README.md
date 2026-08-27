@@ -1,2 +1,2 @@
 # pm-registry
-The official Lux Package Manager Registry.
+The official Nebra Package Manager Registry.
