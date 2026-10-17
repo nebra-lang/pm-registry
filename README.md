@@ -17,7 +17,7 @@ nebra unpublish                     # remove the current project again
 nebra scope add-owner my-org alice  # let alice publish to @my-org as well
 ```
 
-Each command opens an issue in this repository through your GitHub login (`gh auth login`, `GITHUB_TOKEN` or `GH_TOKEN`); without one, it opens the prepared issue in your browser. A workflow checks the request, updates the registry and answers on the issue, one request at a time.
+Each command opens an issue in this repository through your GitHub login (`nebra login`, `gh auth login`, `GITHUB_TOKEN` or `GH_TOKEN`); without one, it opens the prepared issue in your browser. A workflow checks the request, updates the registry and answers on the issue, one request at a time.
 
 A request is accepted when the repository is public and the `nebra.toml` of the project, at the repository's root or in the directory it was published from, names the package, with or without its scope, and when the scope allows it:
 
