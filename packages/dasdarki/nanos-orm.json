@@ -1,0 +1,4 @@
+{
+    "description": "A Doctrine-inspired ORM for nanos world servers, usable from Nebra and Lua",
+    "repo": "https://github.com/DasDarki/NanosORM"
+}
