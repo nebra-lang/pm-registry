@@ -8,7 +8,7 @@ nebra add @nebra-lang/nanos-world@^1
 
 ## Publishing
 
-From the root of a public GitHub repository with a `nebra.toml`:
+From a project with a `nebra.toml` in a public GitHub repository, at its root or in one of its directories:
 
 ```bash
 nebra publish                       # as @<your GitHub account>/<name from nebra.toml>
@@ -19,17 +19,19 @@ nebra scope add-owner my-org alice  # let alice publish to @my-org as well
 
 Each command opens an issue in this repository through your GitHub login (`gh auth login`, `GITHUB_TOKEN` or `GH_TOKEN`); without one, it opens the prepared issue in your browser. A workflow checks the request, updates the registry and answers on the issue, one request at a time.
 
-A request is accepted when:
+A request is accepted when the repository is public and the `nebra.toml` of the project, at the repository's root or in the directory it was published from, names the package, with or without its scope, and when the scope allows it:
 
-- **the scope is yours**: you own it, or it is still unclaimed and named after your GitHub account or an organization you are a *public* member of. Publishing to an unclaimed scope claims it.
-- **the repository is public** and has a `nebra.toml` at its root whose `name` is the package's name, with or without its scope.
+- **you own the scope**, or it is named after your GitHub account, or after an organization you are a *public* member of; or
+- **the repository belongs to the scope's account or organization and its `nebra.toml` names the package with the scope**, such as `name = "@my-org/core"`. Only those who can write to the organization's repositories can do that, so this works for private members too and gives nobody ownership of the scope.
+
+Publishing to a scope that has none of its packages yet claims it. A package whose repository is gone, private or no longer names it can be unpublished by anyone.
 
 ## Layout
 
 | Path | Contents |
 |---|---|
 | `scopes/<scope>.json` | the GitHub accounts that own a scope |
-| `packages/<scope>/<name>.json` | the repository of a package and its description |
+| `packages/<scope>/<name>.json` | the repository of a package, the directory it is in, and its description |
 | `aliases.json` | unscoped names kept for older projects, such as `nanos-world` → `@nebra-lang/nanos-world` |
 | `index.json` | generated from the files above; the CLI reads only this |
 | `scripts/registry.py` | the workflow's logic: checking requests and generating the index |

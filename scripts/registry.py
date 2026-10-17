@@ -25,6 +25,7 @@ MARKER = "<!-- nebra-registry-request -->"
 SCOPE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,38}$")
 NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 PACKAGE_PATTERN = re.compile(r"^@([^/]+)/(.+)$")
+SUBDIR_PATTERN = re.compile(r"^(?!.*(?:^|/)\.\.?(?:/|$))[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$")
 REPO_PATTERN = re.compile(r"^https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$")
 
 
@@ -75,37 +76,38 @@ def split_package(package):
     return scope, name
 
 
-def scope_owners(scope):
-    return [owner.lower() for owner in read_json(SCOPES / f"{scope}.json", {}).get("owners", [])]
+def read_scope(scope):
+    return read_json(SCOPES / f"{scope}.json", None)
 
 
-def require_owner(scope, author):
-    owners = scope_owners(scope)
-    if not owners:
-        raise Rejected(f"The scope `@{scope}` does not exist yet; publishing a package to it claims it.")
-    if author.lower() not in owners:
-        raise Rejected(f"`{author}` is not an owner of `@{scope}`. Its owners are: {', '.join(owners)}.")
+def is_owner(scope, author):
+    owners = (read_scope(scope) or {}).get("owners", [])
+    return author.lower() in [owner.lower() for owner in owners]
 
 
-def require_owner_or_claim(github, scope, author):
-    """Returns whether publishing to the scope claims it for the author, who may claim it as their
-    own account or as an organization they are a public member of."""
-    if (SCOPES / f"{scope}.json").exists():
-        require_owner(scope, author)
-        return False
+def is_member(github, scope, author):
+    """Whether the author is the account the scope is named after or a public member of the
+    organization it is named after. Private memberships cannot be seen by the registry."""
+    return scope == author.lower() or github.exists(f"/orgs/{scope}/public_members/{author}")
 
-    if scope == author.lower() or github.exists(f"/orgs/{scope}/public_members/{author}"):
-        return True
 
+def require_authority(github, scope, author):
+    if is_owner(scope, author) or is_member(github, scope, author):
+        return
     raise Rejected(
-        f"`@{scope}` can only be claimed by the GitHub account `{scope}` or by a public member of the "
-        f"organization `{scope}`. If you are a member, make your membership public and try again.")
+        f"`{author}` cannot change `@{scope}`: only its owners, the account `{scope}` and public members "
+        f"of the organization `{scope}` can.")
 
 
-def check_repository(github, repo, scope, name):
+def check_repository(github, repo, subdir, scope, name):
+    """Checks that a package's repository is public and declares the package, and returns its
+    canonical URL and whether it proves the scope: a repository owned by the scope's account or
+    organization that names the package with its scope, which only those who can write to it can."""
     match = REPO_PATTERN.match(repo or "")
     if not match:
         raise Rejected(f"`{repo}` is not a GitHub repository URL such as `https://github.com/owner/repo`.")
+    if subdir and not SUBDIR_PATTERN.match(subdir):
+        raise Rejected(f"`{subdir}` is not a directory of the repository such as `packages/core`.")
 
     owner, repository = match.group(1), match.group(2)
     status, info = github.get(f"/repos/{owner}/{repository}")
@@ -114,44 +116,81 @@ def check_repository(github, repo, scope, name):
     if info.get("private"):
         raise Rejected(f"The repository `{owner}/{repository}` is private; packages have to be public.")
 
-    status, manifest = github.get(f"/repos/{owner}/{repository}/contents/nebra.toml")
+    location = f"{subdir}/nebra.toml" if subdir else "nebra.toml"
+    declared = declared_name(github, info["full_name"], location)
+    if declared is None:
+        raise Rejected(f"`{owner}/{repository}` has no `{location}`.")
+    if declared not in (name, f"@{scope}/{name}"):
+        raise Rejected(f"The `{location}` of `{owner}/{repository}` names the package `{declared}`, not `{name}`.")
+
+    proves_scope = info["owner"]["login"].lower() == scope and declared == f"@{scope}/{name}"
+    return f"https://github.com/{info['full_name']}", proves_scope
+
+
+def declared_name(github, full_name, location):
+    status, manifest = github.get(f"/repos/{full_name}/contents/{location}")
     if status != 200 or manifest is None:
-        raise Rejected(f"`{owner}/{repository}` has no `nebra.toml` at its root.")
+        return None
 
     text = base64.b64decode(manifest.get("content", "")).decode("utf-8", errors="replace")
     declared = re.search(r'^\s*name\s*=\s*"([^"]*)"', text, re.MULTILINE)
-    if not declared or declared.group(1) not in (name, f"@{scope}/{name}"):
-        found = declared.group(1) if declared else "nothing"
-        raise Rejected(f"The `nebra.toml` of `{owner}/{repository}` names the package `{found}`, not `{name}`.")
-
-    return f"https://github.com/{info['full_name']}"
+    return declared.group(1) if declared else ""
 
 
 def publish(github, request, author):
     scope, name = split_package(request.get("package"))
     package_file = PACKAGES / scope / f"{name}.json"
-    claims_scope = require_owner_or_claim(github, scope, author)
+    subdir = (request.get("subdir") or "").strip("/")
+    repo, proves_scope = check_repository(github, request.get("repo"), subdir, scope, name)
 
-    repo = check_repository(github, request.get("repo"), scope, name)
+    existing = read_scope(scope)
+    if not (proves_scope or is_owner(scope, author) or is_member(github, scope, author)):
+        raise Rejected(
+            f"`{author}` cannot publish to `@{scope}`. Publish from your own account or an organization you are "
+            f"a public member of, or from a repository of `{scope}` whose `nebra.toml` names the package "
+            f"`@{scope}/{name}`, which proves the organization wants it published.")
+
     entry = {"repo": repo}
+    if subdir:
+        entry["subdir"] = subdir
     description = (request.get("description") or "").strip()
     if description:
         entry["description"] = description[:300]
 
-    updated = package_file.exists()
-    if claims_scope:
-        write_json(SCOPES / f"{scope}.json", {"owners": [author]})
+    if existing is None:
+        claimed = {"owners": [author]} if is_member(github, scope, author) else {"owners": []}
+        claimed["account"] = scope
+        write_json(SCOPES / f"{scope}.json", claimed)
+
+    verb = "updated" if package_file.exists() else "published"
     write_json(package_file, entry)
-    verb = "updated" if updated else "published"
     return f"`@{scope}/{name}` is {verb}: `nebra add @{scope}/{name}` installs it from {repo}."
 
 
-def unpublish(request, author):
+def is_abandoned(github, entry, scope, name):
+    """Whether a published package no longer resolves: its repository is gone or private, or no
+    longer declares the package. Anyone may remove such an entry."""
+    match = REPO_PATTERN.match(entry.get("repo", ""))
+    if not match:
+        return True
+
+    status, info = github.get(f"/repos/{match.group(1)}/{match.group(2)}")
+    if status != 200 or info is None or info.get("private"):
+        return True
+
+    subdir = entry.get("subdir")
+    declared = declared_name(github, info["full_name"], f"{subdir}/nebra.toml" if subdir else "nebra.toml")
+    return declared not in (name, f"@{scope}/{name}")
+
+
+def unpublish(github, request, author):
     scope, name = split_package(request.get("package"))
     package_file = PACKAGES / scope / f"{name}.json"
-    require_owner(scope, author)
     if not package_file.exists():
         raise Rejected(f"`@{scope}/{name}` is not published.")
+
+    if not is_abandoned(github, read_json(package_file, {}), scope, name):
+        require_authority(github, scope, author)
 
     package_file.unlink()
     return f"`@{scope}/{name}` is unpublished."
@@ -162,9 +201,13 @@ def change_owner(github, request, author, adding):
     user = (request.get("user") or "").strip()
     if not SCOPE_PATTERN.match(scope):
         raise Rejected(f"`{scope}` is not a valid scope.")
-    require_owner(scope, author)
 
-    owners = read_json(SCOPES / f"{scope}.json", {}).get("owners", [])
+    existing = read_scope(scope)
+    if existing is None:
+        raise Rejected(f"The scope `@{scope}` does not exist yet; publishing a package to it claims it.")
+    require_authority(github, scope, author)
+
+    owners = existing.get("owners", [])
     present = [owner for owner in owners if owner.lower() == user.lower()]
     if adding:
         if present:
@@ -176,21 +219,24 @@ def change_owner(github, request, author, adding):
     else:
         if not present:
             raise Rejected(f"`{user}` does not own `@{scope}`.")
-        if len(owners) == 1:
-            raise Rejected(f"`{user}` is the last owner of `@{scope}`; a scope keeps at least one.")
         owners = [owner for owner in owners if owner.lower() != user.lower()]
         message = f"`{user}` no longer owns `@{scope}`."
 
-    write_json(SCOPES / f"{scope}.json", {"owners": owners})
+    existing["owners"] = owners
+    write_json(SCOPES / f"{scope}.json", existing)
     return message
 
 
 def build_index():
-    """Writes index.json: every package by its scoped name, and every alias by the package it stands for."""
+    """Writes index.json: every package by its scoped name, and every alias by the package it stands for.
+    A package in a directory of its repository is written as `github:owner/repo/directory`."""
     index = {}
     for package_file in sorted(PACKAGES.glob("*/*.json")):
         entry = read_json(package_file, {})
-        index[f"@{package_file.parent.name}/{package_file.stem}"] = entry["repo"]
+        location = entry["repo"]
+        if entry.get("subdir"):
+            location = "github:" + location.removeprefix("https://github.com/") + "/" + entry["subdir"]
+        index[f"@{package_file.parent.name}/{package_file.stem}"] = location
 
     for alias, package in read_json(ALIASES, {}).items():
         if package in index:
@@ -224,7 +270,7 @@ def process(event_path, result_path):
         if action == "publish":
             message = publish(github, request, author)
         elif action == "unpublish":
-            message = unpublish(request, author)
+            message = unpublish(github, request, author)
         elif action in ("add-owner", "remove-owner"):
             message = change_owner(github, request, author, adding=action == "add-owner")
         else:
