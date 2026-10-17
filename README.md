@@ -24,7 +24,7 @@ A request is accepted when the repository is public and the `nebra.toml` of the 
 - **you own the scope**, or it is named after your GitHub account, or after an organization you are a *public* member of; or
 - **the repository belongs to the scope's account or organization and its `nebra.toml` names the package with the scope**, such as `name = "@my-org/core"`. Only those who can write to the organization's repositories can do that, so this works for private members too and gives nobody ownership of the scope.
 
-Publishing to a scope that has none of its packages yet claims it. A package whose repository is gone, private or no longer names it can be unpublished by anyone.
+The first package published to a scope nobody has claimed yet claims it: for you when the scope is named after your account or an organization you are a public member of, otherwise for its account or organization alone. A package whose repository is gone, private or no longer names it can be unpublished by anyone.
 
 ## Layout
 
