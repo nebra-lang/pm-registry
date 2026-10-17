@@ -1,0 +1,55 @@
+name: Registry requests
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+
+concurrency:
+  group: registry
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  process:
+    if: github.event.issue.state == 'open' && contains(github.event.issue.body, '<!-- nebra-registry-request -->')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Process the request
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/registry.py process "$GITHUB_EVENT_PATH" "$RUNNER_TEMP/result.json"
+
+      - name: Commit the registry
+        env:
+          TITLE: ${{ github.event.issue.title }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name "nebra-registry[bot]"
+            git config user.email "nebra-registry[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "registry: $TITLE (#$ISSUE)"
+            git push origin HEAD:main
+          fi
+
+      - name: Answer the request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          accepted=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['accepted'])" "$RUNNER_TEMP/result.json")
+          message=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['message'])" "$RUNNER_TEMP/result.json")
+          if [ "$accepted" = "True" ]; then
+            gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "✅ $message"
+            gh issue close "$ISSUE" --repo "$GITHUB_REPOSITORY" --reason completed
+          else
+            gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "❌ $message"
+            gh issue close "$ISSUE" --repo "$GITHUB_REPOSITORY" --reason "not planned"
+          fi

@@ -1,4 +1,6 @@
 {
-    "nanos-world": "https://github.com/LuaLux/nanos-world-types",
-    "fivem": "https://github.com/LuaLux/fivem-types.git"
+    "@nebra-lang/fivem": "https://github.com/nebra-lang/fivem-types",
+    "@nebra-lang/nanos-world": "https://github.com/nebra-lang/nanos-world-types",
+    "fivem": "https://github.com/nebra-lang/fivem-types",
+    "nanos-world": "https://github.com/nebra-lang/nanos-world-types"
 }

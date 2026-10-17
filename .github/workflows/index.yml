@@ -1,0 +1,38 @@
+name: Registry index
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/**"
+      - "scopes/**"
+      - "aliases.json"
+      - "scripts/registry.py"
+
+concurrency:
+  group: registry
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Regenerate the index
+        run: python3 scripts/registry.py index
+
+      - name: Commit the index
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name "nebra-registry[bot]"
+            git config user.email "nebra-registry[bot]@users.noreply.github.com"
+            git add index.json
+            git commit -m "registry: regenerate the index"
+            git push origin HEAD:main
+          fi
