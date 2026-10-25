@@ -1,0 +1,5 @@
+{
+    "description": "Nebra type declarations for NanosQuark, native utilities for the nanos world server",
+    "repo": "https://github.com/DasDarki/NanosQuark",
+    "subdir": "nebra"
+}

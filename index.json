@@ -1,5 +1,6 @@
 {
     "@dasdarki/nanos-orm": "https://github.com/DasDarki/NanosORM",
+    "@dasdarki/quark-types": "github:DasDarki/NanosQuark/nebra",
     "@nebra-lang/fivem": "https://github.com/nebra-lang/fivem-types",
     "@nebra-lang/nanos-world": "https://github.com/nebra-lang/nanos-world-types",
     "fivem": "https://github.com/nebra-lang/fivem-types",
