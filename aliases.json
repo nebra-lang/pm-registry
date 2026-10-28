@@ -1,4 +1,6 @@
 {
     "fivem": "@nebra-lang/fivem",
+    "gmod": "@nebra-lang/gmod",
+    "love2d": "@nebra-lang/love2d",
     "nanos-world": "@nebra-lang/nanos-world"
 }

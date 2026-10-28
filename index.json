@@ -2,7 +2,11 @@
     "@dasdarki/nanos-orm": "https://github.com/DasDarki/NanosORM",
     "@dasdarki/quark-types": "github:DasDarki/NanosQuark/nebra",
     "@nebra-lang/fivem": "https://github.com/nebra-lang/fivem-types",
+    "@nebra-lang/gmod": "https://github.com/nebra-lang/gmod-types",
+    "@nebra-lang/love2d": "https://github.com/nebra-lang/love2d-types",
     "@nebra-lang/nanos-world": "https://github.com/nebra-lang/nanos-world-types",
     "fivem": "https://github.com/nebra-lang/fivem-types",
+    "gmod": "https://github.com/nebra-lang/gmod-types",
+    "love2d": "https://github.com/nebra-lang/love2d-types",
     "nanos-world": "https://github.com/nebra-lang/nanos-world-types"
 }
